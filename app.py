@@ -113,7 +113,7 @@ class Client:
                 self.br.add_cookie(cookie)
 
     def requestify_cookies(self):
-        # Cookies in the form reqeusts expects.
+        # Cookies in the form requests expects.
         self.info("Transforming the cookies for requests lib.")
         self.req_cookies = {}
         for s_cookie in self.cookies:
@@ -148,9 +148,12 @@ class Client:
         passwd.submit()
 
         # Enter 2FA pin.
-        pin = self.br.find_element_by_id("totpPin")
-        pin.send_keys(getpass("Enter google verification code: "))
-        pin.submit()
+        #pin = self.br.find_element_by_id("totpPin")
+        #pin.send_keys(getpass("Enter google verification code: "))
+        #pin.submit()
+
+        # wait while users approve through google mobile phone app
+        raw_input("Enter a key when you have approved on mobile phone")    
 
         # Click "approve".
         self.info("Sleeping 2 seconds.")
@@ -196,8 +199,8 @@ class Client:
         for month, year in self.iter_monthyear():
             # Navigate to the next month.
             month.click()
-            self.info("Getting urls for month: %r" % month.text)
-            self.sleep(minsleep=5)
+            self.info("Getting urls for month: %s" % month.text)
+            self.sleep(minsleep=5,maxsleep=7)
             re_url = re.compile('\("([^"]+)')
             for div in self.br.find_elements_by_xpath("//li/div"):
                 url = re_url.search(div.get_attribute("style"))
@@ -223,20 +226,25 @@ class Client:
             self.info("Already downloaded: %s" % filename)
             return
         else:
+            self.info("Download from: %s" % url)
             self.info("Saving: %s" % filename)
-            self.sleep()
 
         # Make sure the parent dir exists.
         dr = dirname(filename)
         if not isdir(dr):
             os.makedirs(dr)
 
+        self.download_single_image(url, filename)
+        
+    def download_single_image(self, url, filename):
         # Download it with requests.
         resp = requests.get(url, cookies=self.req_cookies, stream=True)
         if resp.status_code == 200:
             with open(filename, 'wb') as f:
                 for chunk in resp.iter_content(1024):
                     f.write(chunk)
+
+            self.info("Finished saving %s" % filename)
         else:
             msg = 'Error (%r) downloading %r'
             raise DownloadError(msg % (resp.status_code, url))

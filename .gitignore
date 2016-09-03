@@ -4,6 +4,7 @@ logs
 *.swp
 npm-debug.log*
 state
+img
 
 # Runtime data
 pids
