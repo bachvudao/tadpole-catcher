@@ -31,9 +31,14 @@ logging_config = dict(
         'h': {'class': 'logging.StreamHandler',
               'formatter': 'f',
               'level': logging.DEBUG}
-        },
+        ,
+        'f': {'class': 'logging.FileHandler',
+              'formatter': 'f',
+              'filename': 'logs/tadpole.log',
+              'level': logging.INFO}
+    },      
     root = {
-        'handlers': ['h'],
+        'handlers': ['h', 'f'],
         'level': logging.DEBUG,
         },
 )
@@ -219,27 +224,43 @@ class Client:
         # Make the local filename.
         _, key = url.split("key=")
         filename_parts = ['img', self.year.text, self.month.text, '%s.jpg']
-        filename = abspath(join(*filename_parts) % key)
+        filename_jpg = abspath(join(*filename_parts) % key)
+        
+        # We don't know if we have a video or image yet so create both name
+        filename_parts = ['img', self.year.text, self.month.text, '%s.mp4']
+        filename_video = abspath(join(*filename_parts) % key)
 
         # Only download if the file doesn't already exist.
-        if isfile(filename):
-            self.info("Already downloaded: %s" % filename)
+        if isfile(filename_jpg):
+            self.info("Already downloaded image: %s" % filename_jpg)
+            return
+        if isfile(filename_video):
+            self.info("Already downloaded video: %s" % filename_video)
             return
         else:
             self.info("Download from: %s" % url)
-            self.info("Saving: %s" % filename)
-
+            
         # Make sure the parent dir exists.
-        dr = dirname(filename)
+        dr = dirname(filename_jpg)
         if not isdir(dr):
             os.makedirs(dr)
 
-        self.download_single_image(url, filename)
-        
-    def download_single_image(self, url, filename):
         # Download it with requests.
         resp = requests.get(url, cookies=self.req_cookies, stream=True)
         if resp.status_code == 200:
+            content_type = resp.headers['content-type']
+            self.info("Content Type: %s." % content_type)
+
+            if content_type == 'image/jpeg':
+                filename = filename_jpg
+            elif content_type == 'video/mp4':
+                filename = filename_video
+            else:
+                self.warning("Unsupported content type: %s" % content_type)
+                return
+            
+            self.info("Saving: %s" % filename)
+
             with open(filename, 'wb') as f:
                 for chunk in resp.iter_content(1024):
                     f.write(chunk)
