@@ -7,6 +7,7 @@ import shutil
 import pickle
 import logging
 import logging.config
+import magic
 
 from random import randrange
 from getpass import getpass
@@ -225,6 +226,10 @@ class Client:
         _, key = url.split("key=")
         filename_parts = ['img', self.year.text, self.month.text, '%s.jpg']
         filename_jpg = abspath(join(*filename_parts) % key)
+
+        # we might even get a png file even though the mime type is jpeg.
+        filename_parts = ['img', self.year.text, self.month.text, '%s.png']
+        filename_png = abspath(join(*filename_parts) % key)
         
         # We don't know if we have a video or image yet so create both name
         filename_parts = ['img', self.year.text, self.month.text, '%s.mp4']
@@ -237,8 +242,11 @@ class Client:
         if isfile(filename_video):
             self.info("Already downloaded video: %s" % filename_video)
             return
-        else:
-            self.info("Download from: %s" % url)
+        if isfile(filename_png):
+            self.info("Already downloaded png file: %s" % filename_png)
+            return
+        
+        self.info("Download from: %s" % url)
             
         # Make sure the parent dir exists.
         dr = dirname(filename_jpg)
@@ -251,24 +259,31 @@ class Client:
         # Download it with requests.
         resp = requests.get(url, cookies=self.req_cookies, stream=True)
         if resp.status_code == 200:
-            content_type = resp.headers['content-type']
-            self.info("Content Type: %s." % content_type)
-
-            if content_type == 'image/jpeg':
-                filename = filename_jpg
-            elif content_type == 'video/mp4':
-                filename = filename_video
-            else:
-                self.warning("Unsupported content type: %s" % content_type)
-                return
-            
-            self.info("Saving: %s" % filename)
-
-            with open(filename, 'wb') as f:
+            f = None
+            try:
                 for chunk in resp.iter_content(1024):
-                    f.write(chunk)
+                    if f is None:
+                        content_type = magic.from_buffer(chunk, mime=True)
+                        self.info("Content Type: %s." % content_type)
 
-            self.info("Finished saving %s" % filename)
+                        if content_type == 'image/jpeg':
+                            filename = filename_jpg
+                        elif content_type == 'image/png':
+                            filename = filename_png
+                        elif content_type == 'video/mp4':
+                            filename = filename_video
+                        else:
+                            self.warning("Unsupported content type: %s" % content_type)
+                            return
+
+                        self.info("Saving: %s" % filename)
+                        f = open(filename, 'wb')
+                    f.write(chunk)
+                
+                self.info("Finished saving %s" % filename)
+            finally:
+                if f is not None:
+                    f.close()
         else:
             msg = 'Error (%r) downloading %r'
             raise DownloadError(msg % (resp.status_code, url))
