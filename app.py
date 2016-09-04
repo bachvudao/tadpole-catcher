@@ -245,6 +245,9 @@ class Client:
         if not isdir(dr):
             os.makedirs(dr)
 
+        # Sleep to avoid bombarding the server
+        self.sleep(1, 2);
+
         # Download it with requests.
         resp = requests.get(url, cookies=self.req_cookies, stream=True)
         if resp.status_code == 200:
