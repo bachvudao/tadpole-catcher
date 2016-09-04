@@ -20,33 +20,6 @@ from selenium.common.exceptions import NoSuchElementException
 from xvfbwrapper import Xvfb
 
 # -----------------------------------------------------------------------------
-# Logging stuff
-# -----------------------------------------------------------------------------
-logging_config = dict(
-    version = 1,
-    formatters = {
-        'f': {'format':
-              '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'}
-        },
-    handlers = {
-        'h': {'class': 'logging.StreamHandler',
-              'formatter': 'f',
-              'level': logging.DEBUG}
-        ,
-        'f': {'class': 'logging.FileHandler',
-              'formatter': 'f',
-              'filename': 'logs/tadpole.log',
-              'level': logging.INFO}
-    },      
-    root = {
-        'handlers': ['h', 'f'],
-        'level': logging.DEBUG,
-        },
-)
-
-logging.config.dictConfig(logging_config)
-
-# -----------------------------------------------------------------------------
 # The scraper code.
 # -----------------------------------------------------------------------------
 class DownloadError(Exception):
@@ -65,69 +38,93 @@ class Client:
         self.init_logging()
 
     def init_logging(self):
-        logger = logging.getLogger('tadpole-catcher')
-        self.info = logger.info
-        self.debug = logger.debug
-        self.warning = logger.warning
-        self.critical = logger.critical
-        self.exception = logger.exception
+        # -----------------------------------------------------------------------------
+        # Logging stuff
+        # -----------------------------------------------------------------------------
+        logging_config = dict(
+            version = 1,
+            formatters = {
+                'f': {
+                    'format': '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'}
+                },
+            handlers = {
+                'h': {
+                    'class': 'logging.StreamHandler',
+                    'formatter': 'f',
+                    'level': logging.DEBUG
+                },
+                'f': {
+                    'class': 'logging.FileHandler',
+                    'formatter': 'f',
+                    'filename': 'logs/tadpole.log',
+                    'level': logging.INFO}
+            },      
+            root = {
+                'handlers': ['h', 'f'],
+                'level': logging.DEBUG,
+            },
+        )
 
+        logging.config.dictConfig(logging_config)
+
+        self.logger = logging.getLogger('tadpole-catcher')
+        
     def __enter__(self):
-        self.info("Starting xvfb display")
+        self.logger.info("Starting xvfb display")
         self.vdisplay = Xvfb()
         self.vdisplay.start()
-        self.info("Starting browser")
+        self.logger.info("Starting browser")
         self.br = self.browser = webdriver.Firefox()
         self.br.implicitly_wait(10)
-        self.info("Got a browser")
+        self.logger.info("Got a browser")
         return self
 
     def __exit__(self, *args):
-        self.info("Shutting down browser")
+        self.logger.info("Shutting down browser")
         self.browser.quit()
-        self.info("Shutting down xfvb display")
+        self.logger.info("Shutting down xfvb display")
         self.vdisplay.stop()
 
     def sleep(self, minsleep=None, maxsleep=None):
         _min = minsleep or self.MIN_SLEEP
         _max = maxsleep or self.MAX_SLEEP
         duration = randrange(_min * 100, _max * 100) / 100.0
-        self.info('Sleeping %r' % duration)
+        self.logger.info('Sleeping %r' % duration)
         time.sleep(duration)
 
     def navigate_url(self, url):
-        self.info("Navigating to %r" % url)
+        self.logger.info("Navigating to %r" % url)
         self.br.get(url)
 
     def load_cookies(self):
-        self.info("Loading cookies.")
+        self.logger.info("Loading cookies.")
         if not isdir('state'):
             os.mkdir('state')
         with open(self.COOKIE_FILE, "rb") as f:
             self.cookies = pickle.load(f)
 
     def dump_cookies(self):
-        self.info("Dumping cookies.")
+        self.logger.info("Dumping cookies.")
         self.cookies = self.br.get_cookies()
         with open(self.COOKIE_FILE,"wb") as f:
             pickle.dump(self.br.get_cookies(), f)
 
     def add_cookies_to_browser(self):
-        self.info("Adding the cookies to the browser.")
+        self.logger.info("Adding the cookies to the browser.")
         for cookie in self.cookies:
             if self.br.current_url.strip('/').endswith(cookie['domain']):
                 self.br.add_cookie(cookie)
 
     def requestify_cookies(self):
         # Cookies in the form requests expects.
-        self.info("Transforming the cookies for requests lib.")
+        self.logger.info("Transforming the cookies for requests lib.")
         self.req_cookies = {}
         for s_cookie in self.cookies:
             self.req_cookies[s_cookie["name"]] = s_cookie["value"]
 
     def switch_windows(self):
         '''Switch to the other window.'''
-        self.info("Switching windows.")
+        self.logger.info("Switching windows.")
         all_windows = set(self.br.window_handles)
         current_window = set([self.br.current_window_handle])
         other_window = (all_windows - current_window).pop()
@@ -135,7 +132,7 @@ class Client:
 
     def do_login(self):
         # Navigate to login page.
-        self.info("Navigating to login page.")
+        self.logger.info("Navigating to login page.")
         self.br.find_element_by_id("login-button").click()
         self.br.find_element_by_class_name("tp-block-half").click()
         self.br.find_element_by_class_name("other-login-button").click()
@@ -162,9 +159,9 @@ class Client:
         raw_input("Enter a key when you have approved on mobile phone")    
 
         # Click "approve".
-        self.info("Sleeping 2 seconds.")
+        self.logger.info("Sleeping 2 seconds.")
         self.sleep(minsleep=2)
-        self.info("Clicking 'approve' button.")
+        self.logger.info("Clicking 'approve' button.")
         self.br.find_element_by_id("submit_approve_access").click()
 
         # Switch back to tadpoles.
@@ -189,7 +186,7 @@ class Client:
                 year = self.br.find_element_by_xpath(year_xpath)
             except NoSuchElementException:
                 # We reached the end of months on the profile page.
-                self.info("No months left to scrape. Stopping.")
+                self.logger.info("No months left to scrape. Stopping.")
                 sys.exit(0)
 
             self.month = month
@@ -205,7 +202,7 @@ class Client:
         for month, year in self.iter_monthyear():
             # Navigate to the next month.
             month.click()
-            self.info("Getting urls for month: %s" % month.text)
+            self.logger.info("Getting urls for month: %s" % month.text)
             self.sleep(minsleep=5,maxsleep=7)
             re_url = re.compile('\("([^"]+)')
             for div in self.br.find_elements_by_xpath("//li/div"):
@@ -237,16 +234,16 @@ class Client:
 
         # Only download if the file doesn't already exist.
         if isfile(filename_jpg):
-            self.info("Already downloaded image: %s" % filename_jpg)
+            self.logger.info("Already downloaded image: %s" % filename_jpg)
             return
         if isfile(filename_video):
-            self.info("Already downloaded video: %s" % filename_video)
+            self.logger.info("Already downloaded video: %s" % filename_video)
             return
         if isfile(filename_png):
-            self.info("Already downloaded png file: %s" % filename_png)
+            self.logger.info("Already downloaded png file: %s" % filename_png)
             return
         
-        self.info("Download from: %s" % url)
+        self.logger.info("Download from: %s" % url)
             
         # Make sure the parent dir exists.
         dr = dirname(filename_jpg)
@@ -264,7 +261,7 @@ class Client:
                 for chunk in resp.iter_content(1024):
                     if f is None:
                         content_type = magic.from_buffer(chunk, mime=True)
-                        self.info("Content Type: %s." % content_type)
+                        self.logger.info("Content Type: %s." % content_type)
 
                         if content_type == 'image/jpeg':
                             filename = filename_jpg
@@ -276,11 +273,11 @@ class Client:
                             self.warning("Unsupported content type: %s" % content_type)
                             return
 
-                        self.info("Saving: %s" % filename)
+                        self.logger.info("Saving: %s" % filename)
                         f = open(filename, 'wb')
                     f.write(chunk)
                 
-                self.info("Finished saving %s" % filename)
+                self.logger.info("Finished saving %s" % filename)
             finally:
                 if f is not None:
                     f.close()
@@ -296,7 +293,7 @@ class Client:
         try:
             self.load_cookies()
         except (OSError, IOError) as e:
-            self.info("Creating new cookies")
+            self.logger.info("Creating new cookies")
             self.do_login()
             self.dump_cookies()
         else:
@@ -310,15 +307,15 @@ class Client:
             try:
                 self.save_image(url)
             except DownloadError as exc:
-                self.exception(exc)
+                self.logger.exception("Error while saving url %s" % url)
 
     def main(self):
-        self.info("Starting")
+        self.logger.info("Starting")
         with self as client:
             try:
                 client.download_images()
             except Exception as exc:
-                self.info(exc)
+                self.logger.exception("Error in the main execution.")
 
 
 def download_images():
