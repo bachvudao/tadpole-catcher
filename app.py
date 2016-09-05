@@ -8,6 +8,7 @@ import pickle
 import logging
 import logging.config
 import magic
+import json
 
 from random import randrange
 from getpass import getpass
@@ -31,11 +32,31 @@ class Client:
     COOKIE_FILE = "state/cookies.pkl"
     ROOT_URL = "http://tadpoles.com/"
     HOME_URL = "https://www.tadpoles.com/parents"
+    CONFIG_FILE_NAME = "conf.json"
     MIN_SLEEP = 1
     MAX_SLEEP = 3
 
     def __init__(self):
         self.init_logging()
+        self.init_config()
+    
+    def init_config(self):
+        
+        # default values
+        self.DownloadFolder = ''
+        
+        if isfile(self.CONFIG_FILE_NAME):
+            self.logger.info('Detecting a config file. Loading from config file.')
+                    
+            try:
+                with open(self.CONFIG_FILE_NAME) as config_file:
+                    self.config = json.load(config_file)
+
+                    self.DownloadFolder = self.config['DownloadFolder']
+            except Exception as exc:
+                self.logger.exception("Error loading config file. Default values will be used.")
+
+        self.logger.info('Download folder set to %s' % self.DownloadFolder)
 
     def init_logging(self):
         # -----------------------------------------------------------------------------
@@ -221,15 +242,15 @@ class Client:
 
         # Make the local filename.
         _, key = url.split("key=")
-        filename_parts = ['img', self.year.text, self.month.text, '%s.jpg']
+        filename_parts = [self.DownloadFolder, 'img', self.year.text, self.month.text, '%s.jpg']
         filename_jpg = abspath(join(*filename_parts) % key)
 
         # we might even get a png file even though the mime type is jpeg.
-        filename_parts = ['img', self.year.text, self.month.text, '%s.png']
+        filename_parts = [self.DownloadFolder, 'img', self.year.text, self.month.text, '%s.png']
         filename_png = abspath(join(*filename_parts) % key)
         
         # We don't know if we have a video or image yet so create both name
-        filename_parts = ['img', self.year.text, self.month.text, '%s.mp4']
+        filename_parts = [self.DownloadFolder, 'img', self.year.text, self.month.text, '%s.mp4']
         filename_video = abspath(join(*filename_parts) % key)
 
         # Only download if the file doesn't already exist.
