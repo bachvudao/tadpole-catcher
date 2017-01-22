@@ -95,7 +95,6 @@ class Client:
     def __exit__(self, *args):
         self.logger.info("Shutting down browser")
         self.browser.quit()
-        self.logger.info("Shutting down xfvb display")
         
     def sleep(self, minsleep=None, maxsleep=None):
         _min = minsleep or self.MIN_SLEEP
@@ -236,14 +235,14 @@ class Client:
         year_text = self.year.text
         month_text = self.month.text
 
-        filename_parts = [self.DownloadFolder, 'images', year_text, month_text, 'tadpole-%s-%s-%s.%s']
-        filename_jpg = abspath(join(*filename_parts) % (month_text, year_text, key, 'jpg'))
+        filename_parts = [self.DownloadFolder, 'download', year_text, month_text, 'tadpoles-%s-%s-%s.%s']
+        filename_jpg = abspath(join(*filename_parts) % (year_text,month_text, key, 'jpg'))
 
         # we might even get a png file even though the mime type is jpeg.
-        filename_png = abspath(join(*filename_parts) % (month_text, year_text, key, 'png'))
+        filename_png = abspath(join(*filename_parts) % (year_text,month_text, key, 'png'))
         
         # We don't know if we have a video or image yet so create both name
-        filename_video = abspath(join(*filename_parts) % (month_text, year_text, key, 'mp4'))
+        filename_video = abspath(join(*filename_parts) % (year_text,month_text, key, 'mp4'))
 
         # Only download if the file doesn't already exist.
         if isfile(filename_jpg):
@@ -264,7 +263,7 @@ class Client:
             os.makedirs(dr)
 
         # Sleep to avoid bombarding the server
-        self.sleep(1, 2)
+        self.sleep(1, 3)
 
         # Download it with requests.
         resp = requests.get(url, cookies=self.req_cookies, stream=True)
