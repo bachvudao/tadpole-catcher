@@ -4,7 +4,7 @@ logs
 *.swp
 npm-debug.log*
 state
-img
+images
 .vscode
 
 # Runtime data

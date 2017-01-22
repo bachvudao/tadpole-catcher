@@ -233,16 +233,17 @@ class Client:
 
         # Make the local filename.
         _, key = url.split("key=")
-        filename_parts = [self.DownloadFolder, 'img', self.year.text, self.month.text, 'tadpole-%s.jpg']
-        filename_jpg = abspath(join(*filename_parts) % key)
+        year_text = self.year.text
+        month_text = self.month.text
+
+        filename_parts = [self.DownloadFolder, 'images', year_text, month_text, 'tadpole-%s-%s-%s.%s']
+        filename_jpg = abspath(join(*filename_parts) % (month_text, year_text, key, 'jpg'))
 
         # we might even get a png file even though the mime type is jpeg.
-        filename_parts = [self.DownloadFolder, 'img', self.year.text, self.month.text, 'tadpole-%s.png']
-        filename_png = abspath(join(*filename_parts) % key)
+        filename_png = abspath(join(*filename_parts) % (month_text, year_text, key, 'png'))
         
         # We don't know if we have a video or image yet so create both name
-        filename_parts = [self.DownloadFolder, 'img', self.year.text, self.month.text, 'tadpole-%s.mp4']
-        filename_video = abspath(join(*filename_parts) % key)
+        filename_video = abspath(join(*filename_parts) % (month_text, year_text, key, 'mp4'))
 
         # Only download if the file doesn't already exist.
         if isfile(filename_jpg):
