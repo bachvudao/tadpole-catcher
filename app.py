@@ -1,24 +1,19 @@
 import os
 import re
 import sys
-import pdb
 import time
-import shutil
 import pickle
 import logging
 import logging.config
-import magic
 import json
 
 from random import randrange
 from getpass import getpass
 from os.path import abspath, dirname, join, isfile, isdir
 
-import requests
-import lxml.html
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
-from xvfbwrapper import Xvfb
+import requests
 
 # -----------------------------------------------------------------------------
 # The scraper code.
@@ -39,15 +34,15 @@ class Client:
     def __init__(self):
         self.init_logging()
         self.init_config()
-    
+
     def init_config(self):
-        
+
         # default values
         self.DownloadFolder = ''
-        
+
         if isfile(self.CONFIG_FILE_NAME):
             self.logger.info('Detecting a config file. Loading from config file.')
-                    
+
             try:
                 with open(self.CONFIG_FILE_NAME) as config_file:
                     self.config = json.load(config_file)
@@ -56,7 +51,7 @@ class Client:
             except Exception as exc:
                 self.logger.exception("Error loading config file. Default values will be used.")
 
-        self.logger.info('Download folder set to %s' % self.DownloadFolder)
+        self.logger.info('Download folder set to %s', self.DownloadFolder)
 
     def init_logging(self):
         # -----------------------------------------------------------------------------
@@ -91,11 +86,8 @@ class Client:
         self.logger = logging.getLogger('tadpole-catcher')
         
     def __enter__(self):
-        self.logger.info("Starting xvfb display")
-        self.vdisplay = Xvfb()
-        self.vdisplay.start()
         self.logger.info("Starting browser")
-        self.br = self.browser = webdriver.Firefox()
+        self.br = self.browser = webdriver.Chrome()
         self.br.implicitly_wait(10)
         self.logger.info("Got a browser")
         return self
@@ -104,8 +96,7 @@ class Client:
         self.logger.info("Shutting down browser")
         self.browser.quit()
         self.logger.info("Shutting down xfvb display")
-        self.vdisplay.stop()
-
+        
     def sleep(self, minsleep=None, maxsleep=None):
         _min = minsleep or self.MIN_SLEEP
         _max = maxsleep or self.MAX_SLEEP
@@ -163,7 +154,7 @@ class Client:
 
         # Enter email.
         email = self.br.find_element_by_id("Email")
-        email.send_keys(raw_input("Enter email: "))
+        email.send_keys(input("Enter email: "))
         email.submit()
 
         # Enter password.
@@ -177,7 +168,7 @@ class Client:
         #pin.submit()
 
         # wait while users approve through google mobile phone app
-        raw_input("Enter a key when you have approved on mobile phone")    
+        input("Enter a key when you have approved on mobile phone")
 
         # Click "approve".
         self.logger.info("Sleeping 2 seconds.")
@@ -242,62 +233,63 @@ class Client:
 
         # Make the local filename.
         _, key = url.split("key=")
-        filename_parts = [self.DownloadFolder, 'img', self.year.text, self.month.text, '%s.jpg']
+        filename_parts = [self.DownloadFolder, 'img', self.year.text, self.month.text, 'tadpole-%s.jpg']
         filename_jpg = abspath(join(*filename_parts) % key)
 
         # we might even get a png file even though the mime type is jpeg.
-        filename_parts = [self.DownloadFolder, 'img', self.year.text, self.month.text, '%s.png']
+        filename_parts = [self.DownloadFolder, 'img', self.year.text, self.month.text, 'tadpole-%s.png']
         filename_png = abspath(join(*filename_parts) % key)
         
         # We don't know if we have a video or image yet so create both name
-        filename_parts = [self.DownloadFolder, 'img', self.year.text, self.month.text, '%s.mp4']
+        filename_parts = [self.DownloadFolder, 'img', self.year.text, self.month.text, 'tadpole-%s.mp4']
         filename_video = abspath(join(*filename_parts) % key)
 
         # Only download if the file doesn't already exist.
         if isfile(filename_jpg):
-            self.logger.info("Already downloaded image: %s" % filename_jpg)
+            self.logger.info("Already downloaded image: %s", filename_jpg)
             return
         if isfile(filename_video):
-            self.logger.info("Already downloaded video: %s" % filename_video)
+            self.logger.info("Already downloaded video: %s", filename_video)
             return
         if isfile(filename_png):
-            self.logger.info("Already downloaded png file: %s" % filename_png)
+            self.logger.info("Already downloaded png file: %s", filename_png)
             return
-        
-        self.logger.info("Download from: %s" % url)
-            
+
+        self.logger.info("Downloading from: %s", url)
+
         # Make sure the parent dir exists.
         dr = dirname(filename_jpg)
         if not isdir(dr):
             os.makedirs(dr)
 
         # Sleep to avoid bombarding the server
-        self.sleep(1, 2);
+        self.sleep(1, 2)
 
         # Download it with requests.
         resp = requests.get(url, cookies=self.req_cookies, stream=True)
         if resp.status_code == 200:
             f = None
             try:
+                content_type = resp.headers['content-type']
+
+                self.logger.info("Content Type: %s." % content_type)
+
+                if content_type == 'image/jpeg':
+                    filename = filename_jpg
+                elif content_type == 'image/png':
+                    filename = filename_png
+                elif content_type == 'video/mp4':
+                    filename = filename_video
+                else:
+                    self.logger.warning("Unsupported content type: %s" % content_type)
+                    return
+
                 for chunk in resp.iter_content(1024):
                     if f is None:
-                        content_type = magic.from_buffer(chunk, mime=True)
-                        self.logger.info("Content Type: %s." % content_type)
-
-                        if content_type == 'image/jpeg':
-                            filename = filename_jpg
-                        elif content_type == 'image/png':
-                            filename = filename_png
-                        elif content_type == 'video/mp4':
-                            filename = filename_video
-                        else:
-                            self.warning("Unsupported content type: %s" % content_type)
-                            return
-
                         self.logger.info("Saving: %s" % filename)
                         f = open(filename, 'wb')
                     f.write(chunk)
-                
+
                 self.logger.info("Finished saving %s" % filename)
             finally:
                 if f is not None:
