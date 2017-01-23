@@ -1,28 +1,28 @@
+"""This module downloads all photos/videos from tadpole to a local folder."""
+
 import os
+from os.path import abspath, dirname, join, isfile, isdir
 import re
 import sys
 import time
 import pickle
 import logging
 import logging.config
-import json
 
 from random import randrange
 from getpass import getpass
-from os.path import abspath, dirname, join, isfile, isdir
 
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
 import requests
 
-# -----------------------------------------------------------------------------
-# The scraper code.
-# -----------------------------------------------------------------------------
 class DownloadError(Exception):
+    """An exception indicating some errors during downloading"""
     pass
 
 
 class Client:
+    """The main client class responsible for downloading pictures/videos"""
 
     COOKIE_FILE = "state/cookies.pkl"
     ROOT_URL = "http://tadpoles.com/"
@@ -33,37 +33,21 @@ class Client:
 
     def __init__(self):
         self.init_logging()
-        self.init_config()
-
-    def init_config(self):
-
-        # default values
-        self.DownloadFolder = ''
-
-        if isfile(self.CONFIG_FILE_NAME):
-            self.logger.info('Detecting a config file. Loading from config file.')
-
-            try:
-                with open(self.CONFIG_FILE_NAME) as config_file:
-                    self.config = json.load(config_file)
-
-                    self.DownloadFolder = self.config['DownloadFolder']
-            except Exception as exc:
-                self.logger.exception("Error loading config file. Default values will be used.")
-
-        self.logger.info('Download folder set to %s', self.DownloadFolder)
+        self.browser = None
+        self.cookies = None
+        self.req_cookies = None
+        self.__current_month__ = None
+        self.__current_year__ = None
 
     def init_logging(self):
-        # -----------------------------------------------------------------------------
-        # Logging stuff
-        # -----------------------------------------------------------------------------
+        """Set up logging configuration"""
         logging_config = dict(
-            version = 1,
-            formatters = {
+            version=1,
+            formatters={
                 'f': {
                     'format': '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'}
                 },
-            handlers = {
+            handlers={
                 'h': {
                     'class': 'logging.StreamHandler',
                     'formatter': 'f',
@@ -74,8 +58,8 @@ class Client:
                     'formatter': 'f',
                     'filename': 'logs/tadpole.log',
                     'level': logging.INFO}
-            },      
-            root = {
+            },
+            root={
                 'handlers': ['h', 'f'],
                 'level': logging.DEBUG,
             },
@@ -84,50 +68,55 @@ class Client:
         logging.config.dictConfig(logging_config)
 
         self.logger = logging.getLogger('tadpole-catcher')
-        
+
     def __enter__(self):
         self.logger.info("Starting browser")
-        self.br = self.browser = webdriver.Chrome()
-        self.br.implicitly_wait(10)
+        self.browser = webdriver.Chrome()
+        self.browser.implicitly_wait(10)
         self.logger.info("Got a browser")
         return self
 
     def __exit__(self, *args):
         self.logger.info("Shutting down browser")
         self.browser.quit()
-        
+
     def sleep(self, minsleep=None, maxsleep=None):
+        """Sleep a random amount of time bound by the min and max value"""
         _min = minsleep or self.MIN_SLEEP
         _max = maxsleep or self.MAX_SLEEP
         duration = randrange(_min * 100, _max * 100) / 100.0
-        self.logger.info('Sleeping %r' % duration)
+        self.logger.info('Sleeping %r', duration)
         time.sleep(duration)
 
     def navigate_url(self, url):
-        self.logger.info("Navigating to %r" % url)
-        self.br.get(url)
+        """Force the browser to go a url"""
+        self.logger.info("Navigating to %r", url)
+        self.browser.get(url)
 
     def load_cookies(self):
+        """Load cookies from a previously saved ones"""
         self.logger.info("Loading cookies.")
         if not isdir('state'):
             os.mkdir('state')
-        with open(self.COOKIE_FILE, "rb") as f:
-            self.cookies = pickle.load(f)
+        with open(self.COOKIE_FILE, "rb") as file:
+            self.cookies = pickle.load(file)
 
     def dump_cookies(self):
+        """Save cookies of the existing session to a file"""
         self.logger.info("Dumping cookies.")
-        self.cookies = self.br.get_cookies()
-        with open(self.COOKIE_FILE,"wb") as f:
-            pickle.dump(self.br.get_cookies(), f)
+        self.cookies = self.browser.get_cookies()
+        with open(self.COOKIE_FILE, "wb") as file:
+            pickle.dump(self.browser.get_cookies(), file)
 
     def add_cookies_to_browser(self):
+        """Load the saved cookies into the browser"""
         self.logger.info("Adding the cookies to the browser.")
         for cookie in self.cookies:
-            if self.br.current_url.strip('/').endswith(cookie['domain']):
-                self.br.add_cookie(cookie)
+            if self.browser.current_url.strip('/').endswith(cookie['domain']):
+                self.browser.add_cookie(cookie)
 
     def requestify_cookies(self):
-        # Cookies in the form requests expects.
+        """Transform the cookies to what the request lib requires."""
         self.logger.info("Transforming the cookies for requests lib.")
         self.req_cookies = {}
         for s_cookie in self.cookies:
@@ -136,28 +125,28 @@ class Client:
     def switch_windows(self):
         '''Switch to the other window.'''
         self.logger.info("Switching windows.")
-        all_windows = set(self.br.window_handles)
-        current_window = set([self.br.current_window_handle])
+        all_windows = set(self.browser.window_handles)
+        current_window = set([self.browser.current_window_handle])
         other_window = (all_windows - current_window).pop()
-        self.br.switch_to.window(other_window)
+        self.browser.switch_to.window(other_window)
 
     def do_login(self):
-        # Navigate to login page.
+        """Perform login to tadpole (using google)"""
         self.logger.info("Navigating to login page.")
-        self.br.find_element_by_id("login-button").click()
-        self.br.find_element_by_class_name("tp-block-half").click()
-        self.br.find_element_by_class_name("other-login-button").click()
+        self.browser.find_element_by_id("login-button").click()
+        self.browser.find_element_by_class_name("tp-block-half").click()
+        self.browser.find_element_by_class_name("other-login-button").click()
 
         # Focus on the google auth popup.
         self.switch_windows()
 
         # Enter email.
-        email = self.br.find_element_by_id("Email")
+        email = self.browser.find_element_by_id("Email")
         email.send_keys(input("Enter email: "))
         email.submit()
 
         # Enter password.
-        passwd = self.br.find_element_by_id("Passwd")
+        passwd = self.browser.find_element_by_id("Passwd")
         passwd.send_keys(getpass("Enter password:"))
         passwd.submit()
 
@@ -173,7 +162,7 @@ class Client:
         self.logger.info("Sleeping 2 seconds.")
         self.sleep(minsleep=2)
         self.logger.info("Clicking 'approve' button.")
-        self.br.find_element_by_id("submit_approve_access").click()
+        self.browser.find_element_by_id("submit_approve_access").click()
 
         # Switch back to tadpoles.
         self.switch_windows()
@@ -189,20 +178,20 @@ class Client:
             year_xpath = month_xpath_tmpl % (month_index, 2)
 
             # Go home if not there already.
-            if self.br.current_url != self.HOME_URL:
+            if self.browser.current_url != self.HOME_URL:
                 self.navigate_url(self.HOME_URL)
             try:
                 # Find the next month and year elements.
-                month = self.br.find_element_by_xpath(month_xpath)
-                year = self.br.find_element_by_xpath(year_xpath)
+                month = self.browser.find_element_by_xpath(month_xpath)
+                year = self.browser.find_element_by_xpath(year_xpath)
             except NoSuchElementException:
                 # We reached the end of months on the profile page.
                 self.logger.info("No months left to scrape. Stopping.")
                 sys.exit(0)
 
-            self.month = month
-            self.year = year
-            yield month, year
+            self.__current_month__ = month
+            self.__current_year__ = year
+            yield month
 
             month_index += 1
 
@@ -210,13 +199,13 @@ class Client:
         '''Find all the image urls on the current page.
         '''
         # For each month on the dashboard...
-        for month, year in self.iter_monthyear():
+        for month in self.iter_monthyear():
             # Navigate to the next month.
             month.click()
-            self.logger.info("Getting urls for month: %s" % month.text)
-            self.sleep(minsleep=5,maxsleep=7)
-            re_url = re.compile('\("([^"]+)')
-            for div in self.br.find_elements_by_xpath("//li/div"):
+            self.logger.info("Getting urls for month: %s", month.text)
+            self.sleep(minsleep=5, maxsleep=7)
+            re_url = re.compile('\\("([^"]+)')
+            for div in self.browser.find_elements_by_xpath("//li/div"):
                 url = re_url.search(div.get_attribute("style"))
                 if not url:
                     continue
@@ -232,17 +221,17 @@ class Client:
 
         # Make the local filename.
         _, key = url.split("key=")
-        year_text = self.year.text
-        month_text = self.month.text
+        year_text = self.__current_year__.text
+        month_text = self.__current_month__.text
 
-        filename_parts = [self.DownloadFolder, 'download', year_text, month_text, 'tadpoles-%s-%s-%s.%s']
-        filename_jpg = abspath(join(*filename_parts) % (year_text,month_text, key, 'jpg'))
+        filename_parts = ['download', year_text, month_text, 'tadpoles-%s-%s-%s.%s']
+        filename_jpg = abspath(join(*filename_parts) % (year_text, month_text, key, 'jpg'))
 
         # we might even get a png file even though the mime type is jpeg.
-        filename_png = abspath(join(*filename_parts) % (year_text,month_text, key, 'png'))
-        
+        filename_png = abspath(join(*filename_parts) % (year_text, month_text, key, 'png'))
+
         # We don't know if we have a video or image yet so create both name
-        filename_video = abspath(join(*filename_parts) % (year_text,month_text, key, 'mp4'))
+        filename_video = abspath(join(*filename_parts) % (year_text, month_text, key, 'mp4'))
 
         # Only download if the file doesn't already exist.
         if isfile(filename_jpg):
@@ -258,45 +247,48 @@ class Client:
         self.logger.info("Downloading from: %s", url)
 
         # Make sure the parent dir exists.
-        dr = dirname(filename_jpg)
-        if not isdir(dr):
-            os.makedirs(dr)
+        directory = dirname(filename_jpg)
+        if not isdir(directory):
+            os.makedirs(directory)
 
         # Sleep to avoid bombarding the server
         self.sleep(1, 3)
 
         # Download it with requests.
-        resp = requests.get(url, cookies=self.req_cookies, stream=True)
-        if resp.status_code == 200:
-            f = None
-            try:
-                content_type = resp.headers['content-type']
+        while True:
+            resp = requests.get(url, cookies=self.req_cookies, stream=True)
+            if resp.status_code == 200:
+                file = None
+                try:
+                    content_type = resp.headers['content-type']
 
-                self.logger.info("Content Type: %s." % content_type)
+                    self.logger.info("Content Type: %s.", content_type)
 
-                if content_type == 'image/jpeg':
-                    filename = filename_jpg
-                elif content_type == 'image/png':
-                    filename = filename_png
-                elif content_type == 'video/mp4':
-                    filename = filename_video
-                else:
-                    self.logger.warning("Unsupported content type: %s" % content_type)
-                    return
+                    if content_type == 'image/jpeg':
+                        filename = filename_jpg
+                    elif content_type == 'image/png':
+                        filename = filename_png
+                    elif content_type == 'video/mp4':
+                        filename = filename_video
+                    else:
+                        self.logger.warning("Unsupported content type: %s", content_type)
+                        return
 
-                for chunk in resp.iter_content(1024):
-                    if f is None:
-                        self.logger.info("Saving: %s" % filename)
-                        f = open(filename, 'wb')
-                    f.write(chunk)
+                    for chunk in resp.iter_content(1024):
+                        if file is None:
+                            self.logger.info("Saving: %s", filename)
+                            file = open(filename, 'wb')
+                        file.write(chunk)
 
-                self.logger.info("Finished saving %s" % filename)
-            finally:
-                if f is not None:
-                    f.close()
-        else:
-            msg = 'Error (%r) downloading %r'
-            raise DownloadError(msg % (resp.status_code, url))
+                    self.logger.info("Finished saving %s", filename)
+                finally:
+                    if file is not None:
+                        file.close()
+                break
+            else:
+                msg = 'Error downloading %r. Retrying.'
+                self.logger.warning(msg, url)
+                self.sleep(1, 5)
 
     def download_images(self):
         '''Login to tadpoles.com and download all user's images.
@@ -305,7 +297,7 @@ class Client:
 
         try:
             self.load_cookies()
-        except (OSError, IOError) as e:
+        except (OSError, IOError):
             self.logger.info("Creating new cookies")
             self.do_login()
             self.dump_cookies()
@@ -319,22 +311,10 @@ class Client:
         for url in self.iter_urls():
             try:
                 self.save_image(url)
-            except DownloadError as exc:
-                self.logger.exception("Error while saving url %s" % url)
-
-    def main(self):
-        self.logger.info("Starting")
-        with self as client:
-            try:
-                client.download_images()
-            except Exception as exc:
-                self.logger.exception("Error in the main execution.")
-
-
-def download_images():
-    Client().main()
-
+            except DownloadError:
+                self.logger.exception("Error while saving url %s", url)
 
 if __name__ == "__main__":
-    download_images()
+    with Client() as client:
+        client.download_images()
 
