@@ -140,6 +140,12 @@ class Client:
         other_window = (all_windows - current_window).pop()
         self.browser.switch_to.window(other_window)
 
+    def activate_browser(self):
+        '''Activate the fist window.'''
+        self.logger.info("Activate window.")
+        all_windows = set(self.browser.window_handles)
+        self.browser.switch_to.window(all_windows.pop())
+
     def do_login(self):
         """Perform login to tadpole (using google)"""
         self.logger.info("Navigating to login page.")
