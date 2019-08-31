@@ -1,7 +1,7 @@
 """This module downloads all photos/videos from tadpole to a local folder."""
 
 import os
-from os.path import abspath, dirname, join, isfile, isdir
+from os.path import abspath, dirname, join, isfile, isdir, exists
 import re
 import sys
 import time
@@ -13,7 +13,9 @@ from random import randrange
 from getpass import getpass
 
 from selenium import webdriver
+from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.common.keys import Keys
 import requests
 
 class DownloadError(Exception):
@@ -32,6 +34,7 @@ class Client:
     MAX_SLEEP = 3
 
     def __init__(self):
+        self.init_folders()
         self.init_logging()
         self.browser = None
         self.cookies = None
@@ -39,8 +42,13 @@ class Client:
         self.__current_month__ = None
         self.__current_year__ = None
 
+    def init_folders(self):
+        if not exists('logs'):
+            os.makedirs('logs')
+
     def init_logging(self):
         """Set up logging configuration"""
+
         logging_config = dict(
             version=1,
             formatters={
@@ -71,7 +79,7 @@ class Client:
 
     def __enter__(self):
         self.logger.info("Starting browser")
-        self.browser = webdriver.Chrome()
+        self.browser = webdriver.Chrome(ChromeDriverManager().install())
         self.browser.implicitly_wait(10)
         self.logger.info("Got a browser")
         return self
@@ -97,7 +105,7 @@ class Client:
         """Load cookies from a previously saved ones"""
         self.logger.info("Loading cookies.")
         if not isdir('state'):
-            os.mkdir('state')
+            os.makedirs('state')
         with open(self.COOKIE_FILE, "rb") as file:
             self.cookies = pickle.load(file)
 
@@ -113,6 +121,8 @@ class Client:
         self.logger.info("Adding the cookies to the browser.")
         for cookie in self.cookies:
             if self.browser.current_url.strip('/').endswith(cookie['domain']):
+                if 'expiry' in cookie:
+                    del cookie['expiry']
                 self.browser.add_cookie(cookie)
 
     def requestify_cookies(self):
@@ -130,48 +140,32 @@ class Client:
         other_window = (all_windows - current_window).pop()
         self.browser.switch_to.window(other_window)
 
+    def activate_browser(self):
+        '''Activate the fist window.'''
+        self.logger.info("Activate window.")
+        all_windows = set(self.browser.window_handles)
+        self.browser.switch_to.window(all_windows.pop())
+
     def do_login(self):
         """Perform login to tadpole (using google)"""
         self.logger.info("Navigating to login page.")
         self.browser.find_element_by_id("login-button").click()
         self.browser.find_element_by_class_name("tp-block-half").click()
-        self.browser.find_element_by_class_name("other-login-button").click()
+        self.browser.find_element_by_xpath('//img[contains(@data-bind,"click:loginGoogle")]').click()
 
         # Focus on the google auth popup.
         self.switch_windows()
 
-        # Enter email.
-        email = self.browser.find_element_by_id("Email")
-        email.send_keys(input("Enter email: "))
-        email.submit()
+        # wait while users login
+        input("Enter a key when you finished logging in")
 
-        # Enter password.
-        passwd = self.browser.find_element_by_id("Passwd")
-        passwd.send_keys(getpass("Enter password:"))
-        passwd.submit()
-
-        # Enter 2FA pin.
-        #pin = self.br.find_element_by_id("totpPin")
-        #pin.send_keys(getpass("Enter google verification code: "))
-        #pin.submit()
-
-        # wait while users approve through google mobile phone app
-        input("Enter a key when you have approved on mobile phone")
-
-        # Click "approve".
-        self.logger.info("Sleeping 2 seconds.")
-        self.sleep(minsleep=2)
-        self.logger.info("Clicking 'approve' button.")
-        self.browser.find_element_by_id("submit_approve_access").click()
-
-        # Switch back to tadpoles.
-        self.switch_windows()
+        self.activate_browser()
 
     def iter_monthyear(self):
         '''Yields pairs of xpaths for each year/month tile on the
         right hand side of the user's home page.
         '''
-        month_xpath_tmpl = '//*[@id="app"]/div[4]/div[1]/ul/li[%d]/div/div/div/div/span[%d]'
+        month_xpath_tmpl = '//*[@id="app"]/div[3]/div[1]/ul/li[%d]/div/div/div/div/span[%d]'
         month_index = 1
         while True:
             month_xpath = month_xpath_tmpl % (month_index, 1)
