@@ -15,7 +15,6 @@ from getpass import getpass
 from selenium import webdriver
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import NoSuchElementException
-from selenium.webdriver.common.keys import Keys
 import requests
 
 class DownloadError(Exception):
@@ -121,6 +120,7 @@ class Client:
         self.logger.info("Adding the cookies to the browser.")
         for cookie in self.cookies:
             if self.browser.current_url.strip('/').endswith(cookie['domain']):
+                '''Expiry is somehow not in the right format. Remove it'''
                 if 'expiry' in cookie:
                     del cookie['expiry']
                 self.browser.add_cookie(cookie)
@@ -139,12 +139,6 @@ class Client:
         current_window = set([self.browser.current_window_handle])
         other_window = (all_windows - current_window).pop()
         self.browser.switch_to.window(other_window)
-
-    def activate_browser(self):
-        '''Activate the fist window.'''
-        self.logger.info("Activate window.")
-        all_windows = set(self.browser.window_handles)
-        self.browser.switch_to.window(all_windows.pop())
 
     def do_login(self):
         """Perform login to tadpole (using google)"""
